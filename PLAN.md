@@ -1,105 +1,116 @@
-# Might and Magic 3 Web Runner
+# Heroes of Might and Magic III — Web Runner
 
 ## Context
-Build a web-based runner for Might and Magic 3 (DOS, 1991) using js-dos v8 — a WebAssembly port of DOSBox. The user has the original game files (EXE + data) and wants to play it in a browser with no custom engine work. The project directory is currently empty.
 
-## Approach: js-dos v8 + .jsdos bundle
+Play a local, legally-owned copy of **Heroes of Might and Magic III Complete** in a
+browser. The user has the original install (Win32, 1999/2000) at
+`Heroes of Might and Magic III Complete/`.
 
-js-dos v8 is a battle-tested library (~CDN served) that wraps DOSBox compiled to WebAssembly. You provide a `.jsdos` file (a ZIP bundle containing game files + `dosbox.conf`), point the HTML page at it, and the library handles everything else. No backend needed — pure static files.
+> **Superseded plan.** The first version of this document described running
+> *Might and Magic III* (DOS, 1991) under js-dos/DOSBox. That does not apply:
+> `Heroes III.exe` is a `PE32 executable for MS Windows 4.00 (GUI), Intel i386`,
+> and DOSBox executes DOS programs only. No DOSBox configuration can run it.
 
-## Project Structure
+## Approach: VCMI compiled to WebAssembly
+
+[VCMI](https://github.com/vcmi/vcmi) is an open-source reimplementation of the
+HoMM3 engine. It does not use the original executable at all — it reads the
+original *data* files. A WebAssembly port exists and is maintained by *caiiiycuk*
+(the author of js-dos):
+
+- **Engine** — [`caiiiycuk/vcmi-wasm`](https://github.com/caiiiycuk/vcmi-wasm),
+  with builds published to `caiiiycuk.github.io/vcmi-wasm/`.
+- **Frontend** — [`caiiiycuk/vcmi-html5-launcher`](https://github.com/caiiiycuk/vcmi-html5-launcher)
+  (GPL-2.0), vendored into `src/` here and adapted.
+
+Mainline `vcmi/vcmi` has no Emscripten support; the fork is the only option.
+
+### Why the engine is loaded from GitHub Pages
+
+The launcher can also point at newer builds (1.6.7, 1.6.8) on `br.cdn.dos.zone`.
+Those are unusable when self-hosting: the page must be **cross-origin isolated**
+(`COOP: same-origin` + `COEP: require-corp`) so the threaded wasm build can use
+`SharedArrayBuffer`, and under `require-corp` a cross-origin subresource must pass
+a CORS check. `br.cdn.dos.zone` sends no `Access-Control-Allow-Origin`;
+`caiiiycuk.github.io` sends `*`. So `src/util/store.ts` lists only the GitHub Pages
+builds, defaulting to **1.6.5-wasm-2**.
+
+## Structure
 
 ```
-hommg3_web/
-├── index.html       # Player page (js-dos v8 from CDN)
-├── dosbox.conf      # DOSBox config for MM3
-├── build.sh         # Creates mm3.jsdos from game/ + dosbox.conf
-├── package.json     # Dev server scripts
-├── game/            # User drops MM3 files here (gitignored)
-│   ├── MM3.EXE
-│   └── [data files]
-└── .gitignore       # Ignores game/ and mm3.jsdos
+homm3-web/
+├── index.html                  # Page shell
+├── vite.config.ts              # COOP/COEP headers + game-data plugin
+├── plugins/game-data.ts        # Serves the local install at /game/*
+├── scripts/prepare-music.sh    # MP3/ -> .ogg transcode (ffmpeg)
+├── src/                        # Vendored launcher (GPL-2.0), adapted
+│   ├── util/local-data.ts      # Auto-loads game files from /game/*
+│   ├── util/store.ts           # Client list, redux state
+│   └── util/module.ts          # Emscripten module glue
+├── .music/                     # Generated soundtrack (gitignored)
+└── Heroes of Might and Magic III Complete/   # Original game (gitignored)
 ```
 
-## Files to Create
+## Data flow
 
-### 1. `index.html`
-- Load js-dos v8 CSS + JS from `https://v8.js-dos.com/latest/`
-- Full-viewport `#dos` div
-- `Dos(element, { url: "./mm3.jsdos", cycles: "max" })`
-- Minimal styling (black background, centered layout)
+The engine needs exactly six files out of `Data/` (233 MB total):
 
-### 2. `dosbox.conf`
-```ini
-[cpu]
-core=auto
-cputype=auto
-cycles=10000
+| File | Size |
+|---|---|
+| `H3bitmap.lod` | 100.8 MB |
+| `H3sprite.lod` | 62.0 MB |
+| `H3ab_bmp.lod` | 42.0 MB |
+| `Heroes3.snd` | 14.5 MB |
+| `H3ab_spr.lod` | 11.4 MB |
+| `H3ab_ahd.snd` | 1.4 MB |
 
-[dosbox]
-machine=vga
-memsize=16
+Not required: `Heroes3/Heroes3.vid` (490 MB of cutscenes — the engine is started
+with `--disable-video`), the 76 MB `MP3/` folder (used only as a transcode source
+for the optional soundtrack), the map editors, and the PDFs.
 
-[sblaster]
-sbbase=220
-irq=7
-dma=1
-hdma=5
+Upstream makes the user pick those files by hand every time. Here,
+`plugins/game-data.ts` serves them straight off disk and `src/util/local-data.ts`
+pulls whatever is missing on first load, caching into IndexedDB so the 233 MB is
+paid once. The manual file picker remains as a fallback.
 
-[dos]
-xms=true
-ems=true
-umb=true
+Endpoints, all dev/preview-server only — nothing is copied into `dist/`:
 
-[autoexec]
-@echo off
-mount c .
-c:
-mm3.exe
-```
-Note: `cycles=10000` is a safe starting point for a 1991 game; `machine=vga` is appropriate (MM3 is 320×200 VGA, not SVGA).
+- `GET /game/manifest.json` — which required files were found, and their sizes
+- `GET /game/data/<basename>` — an original data file (allowlisted, case-insensitive)
+- `GET /game/async/Mp3/<track>.ogg` — a transcoded soundtrack track
 
-### 3. `build.sh`
-Script that assembles the `.jsdos` zip bundle:
-1. Check `game/` directory exists and is non-empty
-2. Create temp dir with `.jsdos/` subdirectory
-3. Copy all files from `game/` into the temp dir root
-4. Copy `dosbox.conf` into temp dir's `.jsdos/` subfolder
-5. Zip the temp dir contents into `mm3.jsdos`
-6. Clean up temp dir
+## Changes made to the vendored launcher
 
-### 4. `package.json`
-```json
-{
-  "name": "hommg3-web",
-  "scripts": {
-    "build": "bash build.sh",
-    "dev": "npx http-server -p 8080 -c-1",
-    "start": "npm run build && npm run dev"
-  }
-}
-```
-No runtime dependencies. `http-server` used via npx.
-
-### 5. `.gitignore`
-Ignore the original game files (license/IP reasons) and the generated bundle:
-```
-game/
-mm3.jsdos
-```
-
-## Workflow (after implementation)
-
-1. Drop MM3 files into `game/` directory
-2. `npm run build` → creates `mm3.jsdos`
-3. `npm run dev` → serves on `http://localhost:8080`
-4. Open browser — DOSBox boots and MM3 launches automatically
+1. **Domain lock removed** — upstream `main.tsx` redirected any host that was not
+   `dos.zone`/`localhost` to `sec.dos.zone`.
+2. **dos.zone account integration removed** — the premium-key auth screen, cloud
+   save upload/restore (`presign-put`, Yandex object storage), and the token
+   plumbing in the redux store.
+3. **Global leaderboard removed** — `loadHighscores` returned a table fetched from
+   a dos.zone API; it now hands the engine an empty table so the screen works offline.
+4. **Music made local** — tracks streamed from `cdn.dos.zone` by default; the base
+   URL is now `VITE_MUSIC_BASE`, defaulting to the local `/game/async`.
+   A failed track load is caught and logged rather than left to reject.
+5. **Non-CORS clients removed** — see above.
+6. **Analytics removed** — a Yandex Metrika tracking pixel in `index.html`.
+7. **Auto-loading added** — `local-data.ts` plus the manifest-driven progress UI.
+8. **Build fixed** — `tsconfig.node.json` was never actually type-checked upstream
+   (`tsc` does not build project references without `-b`); it now covers
+   `plugins/` and is checked by `npm run build`. Dev server moved off self-signed
+   HTTPS, since `localhost` is already a secure context.
 
 ## Verification
 
-- Run `npm run build` — confirm `mm3.jsdos` is created (should be ~3–8 MB depending on data files)
-- Run `npm run dev`, open `http://localhost:8080`
-- DOSBox boot screen should appear, then MM3 title screen
-- Test keyboard input (arrow keys, Enter) and mouse (should move cursor in menus)
-- If game runs too fast/slow: adjust `cycles=10000` in `dosbox.conf` and rebuild
-- If no sound: verify SoundBlaster IRQ/DMA matches what MM3 sound setup expects (220/7/1 is standard)
+Confirmed:
+
+- `npm run build` — clean `tsc` (both configs), clean eslint, no unresolved assets.
+- `/game/manifest.json` reports `complete: true` with all six files and `music: 57`.
+- Data and music endpoints serve correct sizes and content types; the
+  case-insensitive lookup handles `AITheme0` vs `AITHEME1` correctly.
+- Path traversal on both endpoints returns 404 (raw and percent-encoded).
+- Cross-origin isolation headers present on the document.
+- Every 1.6.5 engine asset returns 200 with `Access-Control-Allow-Origin: *`.
+
+Still needs a human at a browser:
+
+- The game actually rendering, keyboard/mouse input, sound, and save/load.

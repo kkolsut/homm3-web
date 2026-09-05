@@ -1,0 +1,39 @@
+{
+  "name": "homm3-web",
+  "version": "1.0.0",
+  "description": "Play a local Heroes of Might and Magic III install in the browser via VCMI/WebAssembly",
+  "type": "module",
+  "private": true,
+  "license": "GPL-2.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && tsc -p tsconfig.node.json && vite build",
+    "preview": "vite preview",
+    "music": "bash scripts/prepare-music.sh",
+    "lint": "eslint src plugins --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.3.0",
+    "@zip.js/zip.js": "^2.7.54",
+    "preact": "^10.19.3",
+    "react-redux": "^9.1.2",
+    "simple-keyboard": "^3.1.11"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.8.1",
+    "@types/node": "^26.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "autoprefixer": "^10.4.17",
+    "daisyui": "^4.12.14",
+    "eslint": "^8.56.0",
+    "eslint-config-google": "^0.14.0",
+    "postcss": "^8.4.33",
+    "postcss-import": "^16.0.0",
+    "tailwindcss": "^3.4.1",
+    "terser": "^5.27.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
+    "xp.css": "^0.2.6"
+  }
+}

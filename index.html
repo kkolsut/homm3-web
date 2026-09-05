@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Heroes of Might and Magic III</title>
+</head>
+
+<body>
+  <div id="save-toast" class="fixed bottom-4 right-4 bg-green-800 text-white px-6 py-3
+    rounded-lg shadow-lg transition-opacity opacity-0 duration-300 pointer-events-none hidden">
+    Saving game progress...
+  </div>
+  <div id="app-container" class="flex flex-col">
+    <div id="app"></div>
+    <div id="keyboard-container" class="simple-keyboard"></div>
+  </div>
+  <img id="keyboard" src="keyboard.png">
+  <script type="module" src="/src/main.tsx">
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+
+# The original game — copyrighted, never committed.
+Heroes of Might and Magic III Complete/
+
+# Soundtrack transcoded from the original MP3/ folder.
+.music/
+
+# TypeScript incremental build info
+*.tsbuildinfo
