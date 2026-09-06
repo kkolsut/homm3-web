@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+*.tsbuildinfo
+
+# Bind-mounted at runtime, never copied into the image.
+Heroes of Might and Magic III Complete
+.music
+
+.claude
+*.pdf
